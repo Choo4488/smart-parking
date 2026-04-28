@@ -8,8 +8,7 @@ smart-parking/
 │   └── index.html          ← เปิดบนมือถือ/เบราว์เซอร์ได้เลย
 ├── mock-data/
 │   └── mock_generator.js   ← สร้างข้อมูลทดสอบส่งไป MQTT
-└── node-red/
-    └── flow.json           ← import ใน Node-RED
+
 ```
 
 ## การตั้งค่า HiveMQ Cloud
