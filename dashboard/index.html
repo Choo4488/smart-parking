@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="th">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Smart Parking Dashboard</title>
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <style>
+    :root {
+      --green: #22c55e;
+      --red: #ef4444;
+      --yellow: #f59e0b;
+      --blue: #3b82f6;
+      --bg: #0f172a;
+      --card: #1e293b;
+      --card2: #273449;
+      --text: #f1f5f9;
+      --sub: #94a3b8;
+      --border: #334155;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+      padding: 16px;
+    }
+
+    /* ── Header ── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+
+    header h1 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+
+    header h1 span {
+      color: var(--blue);
+    }
+
+    #conn-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.75rem;
+      color: var(--sub);
+    }
+
+    #conn-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--red);
+      transition: background 0.4s;
+    }
+
+    #conn-dot.online {
+      background: var(--green);
+      box-shadow: 0 0 6px var(--green);
+    }
+
+    /* ── Summary cards ── */
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .sum-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px 10px;
+      text-align: center;
+    }
+
+    .sum-card .num {
+      font-size: 2rem;
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    .sum-card .label {
+      font-size: 0.7rem;
+      color: var(--sub);
+      margin-top: 4px;
+    }
+
+    .sum-card.total .num {
+      color: var(--blue);
+    }
+
+    .sum-card.occupied .num {
+      color: var(--red);
+    }
+
+    .sum-card.free .num {
+      color: var(--green);
+    }
+
+    /* ── Section title ── */
+    .section-title {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--sub);
+      margin-bottom: 10px;
+    }
+
+    /* ── Slot cards ── */
+    .slots {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .slot-card {
+      background: var(--card);
+      border: 2px solid var(--border);
+      border-radius: 14px;
+      padding: 16px 10px;
+      text-align: center;
+      transition: border-color 0.3s, background 0.3s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .slot-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: var(--border);
+      transition: background 0.3s;
+    }
+
+    .slot-card.occupied {
+      border-color: var(--red);
+      background: rgba(239, 68, 68, .08);
+    }
+
+    .slot-card.occupied::before {
+      background: var(--red);
+    }
+
+    .slot-card.free {
+      border-color: var(--green);
+      background: rgba(34, 197, 94, .08);
+    }
+
+    .slot-card.free::before {
+      background: var(--green);
+    }
+
+    .slot-icon {
+      font-size: 1.8rem;
+      margin-bottom: 6px;
+    }
+
+    .slot-name {
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--sub);
+    }
+
+    .slot-badge {
+      display: inline-block;
+      margin-top: 6px;
+      padding: 2px 10px;
+      border-radius: 20px;
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    .slot-card.occupied .slot-badge {
+      background: var(--red);
+      color: #fff;
+    }
+
+    .slot-card.free .slot-badge {
+      background: var(--green);
+      color: #fff;
+    }
+
+    .slot-card.unknown .slot-badge {
+      background: var(--border);
+      color: var(--sub);
+    }
+
+    /* ── Gate / Alert row ── */
+    .row2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .info-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+    }
+
+    .info-card .ic-title {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--sub);
+      margin-bottom: 8px;
+    }
+
+    .sensor-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .sensor-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .sensor-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .sensor-row:last-child {
+      padding-bottom: 0;
+      border-bottom: none;
+    }
+
+    .sensor-name {
+      font-size: 0.78rem;
+      color: var(--sub);
+    }
+
+    .sensor-val {
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-align: right;
+    }
+
+    .gate-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 4px 0;
+    }
+
+    .gate-row .gate-name {
+      font-size: 0.8rem;
+    }
+
+    .gate-pill {
+      padding: 2px 10px;
+      border-radius: 20px;
+      font-size: 0.65rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .gate-pill.open {
+      background: rgba(34, 197, 94, .2);
+      color: var(--green);
+    }
+
+    .gate-pill.closed {
+      background: rgba(239, 68, 68, .2);
+      color: var(--red);
+    }
+
+    .gate-pill.unknown {
+      background: var(--border);
+      color: var(--sub);
+    }
+
+    /* ── Alert card ── */
+    .alert-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      transition: border-color 0.3s, background 0.3s;
+    }
+
+    .alert-card.danger {
+      border-color: var(--red);
+      background: rgba(239, 68, 68, .12);
+      animation: pulse-border 1s infinite;
+    }
+
+    @keyframes pulse-border {
+
+      0%,
+      100% {
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, .4);
+      }
+
+      50% {
+        box-shadow: 0 0 0 6px rgba(239, 68, 68, 0);
+      }
+    }
+
+    .alert-icon {
+      font-size: 2rem;
+    }
+
+    .alert-label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--sub);
+      margin-top: 4px;
+    }
+
+    .alert-status {
+      font-size: 0.8rem;
+      font-weight: 700;
+      margin-top: 4px;
+    }
+
+    .alert-card.danger .alert-status {
+      color: var(--red);
+    }
+
+    .alert-card.safe .alert-status {
+      color: var(--green);
+    }
+
+    /* ── Last update ── */
+    #last-update {
+      text-align: center;
+      font-size: 0.7rem;
+      color: var(--sub);
+      margin-top: 4px;
+    }
+
+    /* ── Simulate bar ── */
+    .sim-bar {
+      display: flex;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .sim-btn {
+      flex: 1;
+      padding: 12px 8px;
+      border: none;
+      border-radius: 12px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      cursor: pointer;
+      letter-spacing: 0.3px;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+
+    .sim-btn:active {
+      opacity: 0.75;
+      transform: scale(0.97);
+    }
+
+    .sim-btn.random {
+      background: var(--blue);
+      color: #fff;
+    }
+
+    .sim-btn.fire {
+      background: var(--red);
+      color: #fff;
+    }
+
+    .sim-btn.safe {
+      background: var(--green);
+      color: #fff;
+    }
+
+    .sim-label {
+      text-align: center;
+      font-size: 0.65rem;
+      color: var(--sub);
+      margin-top: 6px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    /* ── Toast popup ── */
+    #toast {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%) translateY(-80px);
+      background: var(--red);
+      color: #fff;
+      padding: 12px 24px;
+      border-radius: 30px;
+      font-size: 0.85rem;
+      font-weight: 700;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, .4);
+      z-index: 9999;
+      transition: transform 0.4s cubic-bezier(.34, 1.56, .64, 1);
+      white-space: nowrap;
+    }
+
+    #toast.show {
+      transform: translateX(-50%) translateY(0);
+    }
+
+    /* ── Config modal ── */
+    #cfg-btn {
+      background: var(--card2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--sub);
+      font-size: 1rem;
+      padding: 4px 8px;
+      cursor: pointer;
+    }
+
+    #cfg-btn:hover {
+      color: var(--text);
+    }
+
+    #modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, .6);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #modal-overlay.show {
+      display: flex;
+    }
+
+    #modal {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 24px;
+      width: min(90vw, 400px);
+    }
+
+    #modal h2 {
+      font-size: 1rem;
+      margin-bottom: 16px;
+    }
+
+    #modal label {
+      display: block;
+      font-size: 0.75rem;
+      color: var(--sub);
+      margin-bottom: 4px;
+    }
+
+    #modal input {
+      width: 100%;
+      background: var(--card2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 8px 12px;
+      font-size: 0.85rem;
+      margin-bottom: 12px;
+      outline: none;
+    }
+
+    #modal input:focus {
+      border-color: var(--blue);
+    }
+
+    .modal-btns {
+      display: flex;
+      gap: 10px;
+      margin-top: 4px;
+    }
+
+    .modal-btns button {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      border-radius: 10px;
+      font-size: 0.85rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    #btn-save {
+      background: var(--blue);
+      color: #fff;
+    }
+
+    #btn-cancel {
+      background: var(--card2);
+      color: var(--sub);
+    }
+
+    @media (max-width: 760px) {
+
+      .summary,
+      .slots,
+      .row2,
+      .sensor-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- Header -->
+  <header>
+    <h1>Smart <span>Parking</span></h1>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <div id="conn-status">
+        <div id="conn-dot"></div>
+        <span id="conn-text">Connecting…</span>
+      </div>
+      <button id="cfg-btn" title="MQTT Settings">⚙</button>
+    </div>
+  </header>
+
+  <!-- Summary -->
+  <div class="summary">
+    <div class="sum-card total">
+      <div class="num" id="s-total">2</div>
+      <div class="label">Total Slots</div>
+    </div>
+    <div class="sum-card occupied">
+      <div class="num" id="s-occupied">–</div>
+      <div class="label">Occupied</div>
+    </div>
+    <div class="sum-card free">
+      <div class="num" id="s-free">–</div>
+      <div class="label">Available</div>
+    </div>
+  </div>
+
+  <!-- Slot Cards -->
+  <div class="section-title">Parking Slots</div>
+  <div class="slots">
+    <div class="slot-card unknown" id="slot-0">
+      <div class="slot-icon">🚗</div>
+      <div class="slot-name">Slot 1</div>
+      <div class="slot-badge">–</div>
+    </div>
+    <div class="slot-card unknown" id="slot-1">
+      <div class="slot-icon">🚗</div>
+      <div class="slot-name">Slot 2</div>
+      <div class="slot-badge">–</div>
+    </div>
+  </div>
+
+  <div class="section-title">Sensor Details</div>
+  <div class="sensor-grid">
+    <div class="info-card">
+      <div class="ic-title">Raw Sensors</div>
+      <div class="sensor-list">
+        <div class="sensor-row"><span class="sensor-name">Distance Slot 1</span><span class="sensor-val"
+            id="dist-0">-</span></div>
+        <div class="sensor-row"><span class="sensor-name">Distance Slot 2</span><span class="sensor-val"
+            id="dist-1">-</span></div>
+        <div class="sensor-row"><span class="sensor-name">MQ-5 Gas Value</span><span class="sensor-val"
+            id="gas-value">-</span></div>
+        <div class="sensor-row"><span class="sensor-name">MQ-5 Threshold</span><span class="sensor-val"
+            id="gas-threshold">-</span></div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="ic-title">RFID / IR Events</div>
+      <div class="sensor-list">
+        <div class="sensor-row"><span class="sensor-name">Last RFID UID</span><span class="sensor-val"
+            id="rfid-uid">-</span></div>
+        <div class="sensor-row"><span class="sensor-name">RFID Result</span><span class="sensor-val"
+            id="rfid-auth">-</span></div>
+        <div class="sensor-row"><span class="sensor-name">IR Entry Count</span><span class="sensor-val"
+            id="ir-entry-count">0</span></div>
+        <div class="sensor-row"><span class="sensor-name">IR Exit Count</span><span class="sensor-val"
+            id="ir-exit-count">0</span></div>
+        <div class="sensor-row"><span class="sensor-name">Last IR Event</span><span class="sensor-val"
+            id="ir-last-event">-</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Gates + Alert -->
+  <div class="row2">
+    <div class="info-card">
+      <div class="ic-title">Gates</div>
+      <div class="gate-row">
+        <span class="gate-name">Entry</span>
+        <span class="gate-pill unknown" id="gate-entry">–</span>
+      </div>
+      <hr style="border-color:var(--border);margin:6px 0;">
+      <div class="gate-row">
+        <span class="gate-name">Exit</span>
+        <span class="gate-pill unknown" id="gate-exit">–</span>
+      </div>
+    </div>
+
+    <div class="alert-card safe" id="alert-card">
+      <div class="alert-icon" id="alert-icon">✅</div>
+      <div class="alert-label">Fire / Gas</div>
+      <div class="alert-status" id="alert-status">Safe</div>
+    </div>
+  </div>
+
+  <div id="last-update">Last update: –</div>
+
+
+  <!-- Toast -->
+  <div id="toast">🔥 FIRE / GAS ALERT!</div>
+
+  <!-- Config Modal -->
+  <div id="modal-overlay">
+    <div id="modal">
+      <h2>⚙ MQTT Settings</h2>
+      <label>MQTT Host</label>
+      <input id="cfg-host" placeholder="xxxxxxxx.s1.eu.hivemq.cloud" />
+      <label>Port (WebSocket TLS)</label>
+      <input id="cfg-port" type="number" value="8884" />
+      <label>Username</label>
+      <input id="cfg-user" placeholder="username" />
+      <label>Password</label>
+      <input id="cfg-pass" type="password" placeholder="password" />
+      <label>Topic</label>
+      <input id="cfg-topic" value="smartparking/status" />
+      <div class="modal-btns">
+        <button id="btn-save">Connect</button>
+        <button id="btn-cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ── Config ──────────────────────────────────────────────────────
+    const DEFAULT_CONFIG = {
+      host: '2ca71896352241b183bcb6c58ce3f5e9.s1.eu.hivemq.cloud',
+      port: 8884,
+      user: 'esp32s3',
+      pass: 'esp1234A',
+      topic: 'smartparking/status'
+    };
+    // ────────────────────────────────────────────────────────────────
+
+    let client = null;
+    let prevAlert = false;
+
+    function loadConfig() {
+      const s = localStorage.getItem('sp_cfg');
+      return s ? JSON.parse(s) : DEFAULT_CONFIG;
+    }
+    function saveConfig(c) { localStorage.setItem('sp_cfg', JSON.stringify(c)); }
+
+    // ── MQTT ────────────────────────────────────────────────────────
+    function connect(cfg) {
+      if (client) { try { client.end(true); } catch (e) { } }
+
+      const url = `wss://${cfg.host}:${cfg.port}/mqtt`;
+      setConnStatus(false, 'Connecting…');
+
+      client = mqtt.connect(url, {
+        username: cfg.user || undefined,
+        password: cfg.pass || undefined,
+        clientId: 'sp_dash_' + Math.random().toString(16).slice(2, 8),
+        clean: true,
+        reconnectPeriod: 5000,
+        connectTimeout: 10000
+      });
+
+      client.on('connect', () => {
+        setConnStatus(true, 'Online');
+        client.subscribe(cfg.topic, { qos: 1 }, err => {
+          if (err) console.error('Subscribe error:', err);
+        });
+      });
+
+      client.on('message', (_topic, payload) => {
+        try {
+          const data = JSON.parse(payload.toString());
+          updateDashboard(data);
+        } catch (e) { console.error('JSON parse error:', e); }
+      });
+
+      client.on('offline', () => setConnStatus(false, 'Offline'));
+      client.on('reconnect', () => setConnStatus(false, 'Reconnecting…'));
+      client.on('error', err => { setConnStatus(false, 'Error'); console.error(err); });
+    }
+
+    // ── UI Updates ──────────────────────────────────────────────────
+    function setConnStatus(online, text) {
+      document.getElementById('conn-dot').className = online ? 'online' : '';
+      document.getElementById('conn-text').textContent = text;
+    }
+
+    function updateDashboard(d) {
+      // Summary
+      if (d.slots) {
+        setText('s-total', d.slots.total ?? 2);
+        setText('s-occupied', d.slots.occupied ?? '–');
+        setText('s-free', d.slots.free ?? '–');
+      }
+
+      // Slot details
+      if (Array.isArray(d.slot_detail)) {
+        d.slot_detail.forEach((status, i) => {
+          const card = document.getElementById(`slot-${i}`);
+          if (!card) return;
+          const isOcc = status === 'occupied';
+          card.className = `slot-card ${isOcc ? 'occupied' : 'free'}`;
+          card.querySelector('.slot-icon').textContent = isOcc ? '🚘' : '🅿';
+          card.querySelector('.slot-badge').textContent = isOcc ? 'Occupied' : 'Free';
+        });
+      }
+
+      if (Array.isArray(d.distance_cm)) {
+        d.distance_cm.forEach((distance, i) => {
+          setText(`dist-${i}`, `${Number(distance).toFixed(1)} cm`);
+        });
+      }
+
+      if (d.sensors) {
+        setText('gas-value', d.sensors.mq5_gas_value ?? '-');
+        setText('gas-threshold', d.sensors.mq5_threshold ?? '-');
+        setText('ir-entry-count', d.sensors.ir_entry_count ?? 0);
+        setText('ir-exit-count', d.sensors.ir_exit_count ?? 0);
+        setText('ir-last-event', d.sensors.last_ir_event || '-');
+      }
+
+      if (d.rfid) {
+        setText('rfid-uid', d.rfid.last_uid || '-');
+        setText('rfid-auth', d.rfid.authorized ? 'Authorized' : 'Unauthorized');
+      }
+
+      // Gates
+      setGate('gate-entry', d.gate_entry);
+      setGate('gate-exit', d.gate_exit);
+
+      // Fire / Gas Alert
+      const alert = !!d.fire_alert;
+      const alertCard = document.getElementById('alert-card');
+      const alertIcon = document.getElementById('alert-icon');
+      const alertStatus = document.getElementById('alert-status');
+
+      alertCard.className = `alert-card ${alert ? 'danger' : 'safe'}`;
+      alertIcon.textContent = alert ? '🔥' : '✅';
+      alertStatus.textContent = alert ? 'DANGER!' : 'Safe';
+
+      if (alert && !prevAlert) showToast('🔥 FIRE / GAS ALERT! ตรวจพบแก๊ส/ไฟไหม้!');
+      prevAlert = alert;
+
+      // Timestamp
+      const now = new Date();
+      document.getElementById('last-update').textContent =
+        `Last update: ${now.toLocaleTimeString('th-TH')}`;
+    }
+
+    function setText(id, val) {
+      document.getElementById(id).textContent = val;
+    }
+
+    function setGate(id, status) {
+      const el = document.getElementById(id);
+      const s = (status || '').toLowerCase();
+      el.className = `gate-pill ${s === 'open' ? 'open' : s === 'closed' ? 'closed' : 'unknown'}`;
+      el.textContent = s === 'open' ? 'Open' : s === 'closed' ? 'Closed' : '–';
+    }
+
+    // ── Toast ────────────────────────────────────────────────────────
+    let toastTimer = null;
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => t.classList.remove('show'), 4000);
+    }
+
+    // ── Config Modal ─────────────────────────────────────────────────
+    const overlay = document.getElementById('modal-overlay');
+    const cfgBtn = document.getElementById('cfg-btn');
+    const btnSave = document.getElementById('btn-save');
+    const btnCancel = document.getElementById('btn-cancel');
+
+    cfgBtn.addEventListener('click', () => {
+      const cfg = loadConfig();
+      document.getElementById('cfg-host').value = cfg.host;
+      document.getElementById('cfg-port').value = cfg.port;
+      document.getElementById('cfg-user').value = cfg.user;
+      document.getElementById('cfg-pass').value = cfg.pass;
+      document.getElementById('cfg-topic').value = cfg.topic;
+      overlay.classList.add('show');
+    });
+
+    btnCancel.addEventListener('click', () => overlay.classList.remove('show'));
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.classList.remove('show'); });
+
+    btnSave.addEventListener('click', () => {
+      const cfg = {
+        host: document.getElementById('cfg-host').value.trim(),
+        port: parseInt(document.getElementById('cfg-port').value),
+        user: document.getElementById('cfg-user').value.trim(),
+        pass: document.getElementById('cfg-pass').value,
+        topic: document.getElementById('cfg-topic').value.trim()
+      };
+      saveConfig(cfg);
+      overlay.classList.remove('show');
+      connect(cfg);
+    });
+
+    // ── Simulate helpers ─────────────────────────────────────────────
+    function rSlot() { return Math.random() < 0.5 ? 'occupied' : 'free'; }
+    function rGate() { return Math.random() < 0.5 ? 'open' : 'closed'; }
+
+    function simulateRandom() {
+      const detail = [rSlot(), rSlot(), rSlot()];
+      const occupied = detail.filter(s => s === 'occupied').length;
+      updateDashboard({
+        slots: { total: 3, occupied, free: 3 - occupied },
+        slot_detail: detail,
+        distance_cm: detail.map(s => s === 'occupied' ? 12.4 : 82.1),
+        gate_entry: rGate(),
+        gate_exit: rGate(),
+        fire_alert: Math.random() < 0.2,
+        sensors: {
+          mq5_gas_value: 1320,
+          mq5_threshold: 2000,
+          ir_entry_count: 4,
+          ir_exit_count: 3,
+          last_ir_event: 'entry'
+        },
+        rfid: {
+          last_uid: 'DE:AD:BE:EF',
+          authorized: true,
+          last_seen_at: Math.floor(Date.now() / 1000)
+        }
+      });
+    }
+
+    function simulateFire() {
+      updateDashboard({
+        slots: { total: 3, occupied: 3, free: 0 },
+        slot_detail: ['occupied', 'occupied', 'occupied'],
+        distance_cm: [11.4, 9.8, 14.2],
+        gate_entry: 'open',
+        gate_exit: 'open',
+        fire_alert: true,
+        sensors: {
+          mq5_gas_value: 2675,
+          mq5_threshold: 2000,
+          ir_entry_count: 8,
+          ir_exit_count: 2,
+          last_ir_event: 'exit'
+        },
+        rfid: {
+          last_uid: '01:02:03:04',
+          authorized: false,
+          last_seen_at: Math.floor(Date.now() / 1000)
+        }
+      });
+    }
+
+    function simulateSafe() {
+      updateDashboard({
+        slots: { total: 3, occupied: 0, free: 3 },
+        slot_detail: ['free', 'free', 'free'],
+        distance_cm: [90.3, 88.7, 94.1],
+        gate_entry: 'closed',
+        gate_exit: 'closed',
+        fire_alert: false,
+        sensors: {
+          mq5_gas_value: 980,
+          mq5_threshold: 2000,
+          ir_entry_count: 1,
+          ir_exit_count: 1,
+          last_ir_event: 'entry'
+        },
+        rfid: {
+          last_uid: 'DE:AD:BE:EF',
+          authorized: true,
+          last_seen_at: Math.floor(Date.now() / 1000)
+        }
+      });
+    }
+
+    // ── Auto-connect on load ─────────────────────────────────────────
+    window.addEventListener('load', () => {
+      connect(loadConfig());
+    });
+  </script>
+</body>
+
+</html>
