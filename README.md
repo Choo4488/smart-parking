@@ -35,10 +35,6 @@ npm install mqtt
 node mock_generator.js
 ```
 
-### 3. Node-RED
-1. เปิด Node-RED → Menu → Import → วางเนื้อหาจาก `flow.json`
-2. ดับเบิลคลิก node `mqtt-broker` → ใส่ credentials
-3. Deploy
 
 ## MQTT Topic & JSON Format
 
